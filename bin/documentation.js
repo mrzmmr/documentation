@@ -5,6 +5,8 @@
 'use strict';
 
 var documentation = require('../'),
+  chokidar = require('chokidar'),
+  debounce = require('debounce'),
   streamArray = require('stream-array'),
   fs = require('fs'),
   vfs = require('vinyl-fs'),
@@ -13,15 +15,21 @@ var documentation = require('../'),
 
 var parsedArgs = args(process.argv.slice(2));
 
-generate(
+var generator = generate.bind(null,
   parsedArgs.inputs,
   documentation.formats[parsedArgs.formatter],
   parsedArgs.formatterOptions,
   parsedArgs.options,
-  parsedArgs.output, function (err, res) {
-});
+  parsedArgs.output);
 
-function generate(inputs, formatter, formatterOptions, options, destination, callback) {
+if (parsedArgs.watch) {
+  chokidar.watch(parsedArgs.inputs)
+    .on('all', debounce(generator, 300));
+} else {
+  generator();
+}
+
+function generate(inputs, formatter, formatterOptions, options, destination) {
   documentation(inputs, options, function (err, comments) {
     if (err) {
       throw err;
@@ -41,10 +49,9 @@ function generate(inputs, formatter, formatterOptions, options, destination, cal
       if (destination !== 'stdout') {
         if (formatter === 'html') {
           streamArray(output)
-            .pipe(vfs.dest(destination))
-            .on('end', callback);
+            .pipe(vfs.dest(destination));
         } else {
-          fs.writeFile(destination, output, callback);
+          fs.writeFileSync(destination, output);
         }
       } else {
         process.stdout.write(output);
